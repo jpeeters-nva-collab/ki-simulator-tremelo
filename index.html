@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>KI-simulator Tremelo-Baal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f4f4f7;
+      color: #222;
+    }
+    .container {
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 24px;
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+    }
+    h1 {
+      font-size: 1.6rem;
+      margin-top: 0;
+      margin-bottom: 0.5rem;
+    }
+    p {
+      line-height: 1.5;
+      margin-top: 0.25rem;
+    }
+    label {
+      display: block;
+      margin-top: 1.5rem;
+      margin-bottom: 0.4rem;
+      font-weight: 600;
+    }
+    input[type="number"] {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 1rem;
+      box-sizing: border-box;
+    }
+    button {
+      margin-top: 1rem;
+      padding: 10px 18px;
+      border: none;
+      border-radius: 999px;
+      font-size: 1rem;
+      cursor: pointer;
+      background: #f9c200; /* N-VA geel-ish maar neutraal genoeg */
+      color: #222;
+      font-weight: 600;
+    }
+    button:hover {
+      filter: brightness(0.95);
+    }
+    .results {
+      margin-top: 1.5rem;
+      padding: 14px 16px;
+      border-radius: 10px;
+      background: #f7f7fb;
+      border: 1px solid #e0e0e0;
+      display: none; /* pas tonen na berekening */
+    }
+    .results h2 {
+      margin-top: 0;
+      font-size: 1.2rem;
+    }
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 4px 0;
+      font-family: "SF Mono", Consolas, Monaco, monospace;
+      font-size: 0.95rem;
+    }
+    .result-label {
+      opacity: 0.9;
+    }
+    .result-value {
+      font-weight: 600;
+    }
+    .disclaimer {
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      color: #666;
+    }
+    .small {
+      font-size: 0.9rem;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>KI-simulator Tremelo</h1>
+    <p class="small">
+      Vul het kadastraal inkomen (KI) van jouw woning in en ontdek een
+      <strong>geschatte</strong> jaarlijkse belasting vóór en na de verhoging
+      van de opcentiemen, en hoeveel extra je betaalt.
+    </p>
+
+    <label for="kiInput">Kadastraal inkomen (KI) in euro</label>
+    <input
+      id="kiInput"
+      type="number"
+      min="0"
+      step="1"
+      placeholder="Bijvoorbeeld 950"
+    />
+
+    <button id="calcButton">Bereken</button>
+
+    <div id="results" class="results">
+      <h2>Jouw berekening</h2>
+      <div class="result-row">
+        <span class="result-label">Ingegeven KI:</span>
+        <span class="result-value" id="kiDisplay">–</span>
+      </div>
+      <hr>
+      <div class="result-row">
+        <span class="result-label">Huidige belasting per jaar:</span>
+        <span class="result-value" id="currentTax">–</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Nieuwe belasting per jaar:</span>
+        <span class="result-value" id="newTax">–</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Extra per jaar:</span>
+        <span class="result-value" id="extraYear">–</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Extra over volledige legislatuur:</span>
+        <span class="result-value" id="extraTotal">–</span>
+      </div>
+
+      <p class="disclaimer">
+        Deze simulator geeft een vereenvoudigde maar realistische schatting op basis
+        van het kadastraal inkomen en de verhoging van de opcentiemen in Tremelo.
+        Werkelijke bedragen kunnen licht afwijken door individuele omstandigheden
+        en afrondingen.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    // 🔧 PARAMETER-INSTELLINGEN – DIT ZIJN DE ECHTE CIJFERS (eventueel aanpassen bij nieuw aanslagjaar)
+  const INDEX_COEFF = 2.2446;        // indexatiefactor KI (2025)
+  const BASE_RATE = 0.0397;          // 3,97% basisheffing Vlaams Gewest
+  const PROV_OPC = 171.75;           // opcentiemen provincie Vlaams-Brabant
+  const GEM_OPC_OLD = 567;           // oude gemeentelijke opcentiemen Tremelo
+  const GEM_OPC_NEW = 799;           // nieuwe gemeentelijke opcentiemen Tremelo
+  const LEGISLATUUR_JAREN = 6;       // aantal jaren dat je wil tonen
+
+  function formatEuro(value) {
+    if (isNaN(value)) return "–";
+    return "€ " + value.toFixed(2).replace(".", ",");
+  }
+
+  document.getElementById("calcButton").addEventListener("click", function () {
+    const kiInput = document.getElementById("kiInput");
+    const raw = kiInput.value.replace(",", ".").trim();
+    const ki = parseFloat(raw);
+
+    if (isNaN(ki) || ki <= 0) {
+      alert("Vul een geldig, positief KI-bedrag in.");
+      return;
+    }
+
+    // 1) Geïndexeerd KI
+    const indexedKI = ki * INDEX_COEFF;
+
+    // 2) Basisheffing Vlaams Gewest
+    const baseTax = indexedKI * BASE_RATE;
+
+    // 3) Provinciale opcentiemen (blijven gelijk)
+    const provPart = baseTax * PROV_OPC / 100;
+
+    // 4) Gemeentelijke opcentiemen oud/nieuw
+    const gemOld = baseTax * GEM_OPC_OLD / 100;
+    const gemNew = baseTax * GEM_OPC_NEW / 100;
+
+    // 5) Totale onroerende voorheffing
+    const totalOld = baseTax + provPart + gemOld;
+    const totalNew = baseTax + provPart + gemNew;
+
+    const extraPerYear = totalNew - totalOld;
+    const extraTotal = extraPerYear * LEGISLATUUR_JAREN;
+
+    // Resultaten tonen
+    document.getElementById("kiDisplay").textContent = formatEuro(ki);
+    document.getElementById("currentTax").textContent = formatEuro(totalOld);
+    document.getElementById("newTax").textContent = formatEuro(totalNew);
+    document.getElementById("extraYear").textContent = formatEuro(extraPerYear);
+    document.getElementById("extraTotal").textContent = formatEuro(extraTotal);
+
+    document.getElementById("results").style.display = "block";
+    });
+  </script>
+</body>
+</html>
